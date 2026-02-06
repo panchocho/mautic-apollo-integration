@@ -13,6 +13,9 @@ use Psr\Log\LoggerInterface;
 
 class QueueService
 {
+    private const CONTACT_ID_FIELD = 'apollo_contact_id';
+    private const COMPANY_ID_FIELD = 'apollo_company_id';
+
     private EntityManagerInterface $em;
     private ApolloApiClient $client;
     private LeadModel $leadModel;
@@ -43,6 +46,7 @@ class QueueService
         $item->setType($type);
         $item->setPayload($payload);
         $item->setStatus(QueueItem::STATUS_PENDING);
+        $item->setNextAttemptAt(new \DateTimeImmutable());
 
         $this->em->persist($item);
         $this->em->flush();
@@ -51,7 +55,14 @@ class QueueService
     public function processPending(): int
     {
         $repo = $this->em->getRepository(QueueItem::class);
-        $items = $repo->findBy(['status' => QueueItem::STATUS_PENDING], null, 50);
+        $now = new \DateTimeImmutable();
+        $qb = $repo->createQueryBuilder('q')
+            ->where('q.status = :status')
+            ->andWhere('q.nextAttemptAt <= :now')
+            ->setParameter('status', QueueItem::STATUS_PENDING)
+            ->setParameter('now', $now)
+            ->setMaxResults(50);
+        $items = $qb->getQuery()->getResult();
 
         $processed = 0;
         foreach ($items as $item) {
@@ -66,10 +77,14 @@ class QueueService
                     'type' => $item->getType(),
                     'exception' => $e,
                 ]);
-                // simple retry strategy: leave as pending on 429, else mark failed
+                $item->incrementAttempts();
                 if ($this->isRateLimit($e)) {
-                    // leave pending for retry; brief sleep to respect rate
-                    usleep(300000);
+                    $delayMinutes = min(15, max(1, $item->getAttempts()));
+                    $item->setNextAttemptAt($now->modify('+' . $delayMinutes . ' minutes'));
+                    $item->setStatus(QueueItem::STATUS_PENDING);
+                } elseif ($item->getAttempts() < 5) {
+                    $delayMinutes = min(30, pow(2, $item->getAttempts()));
+                    $item->setNextAttemptAt($now->modify('+' . $delayMinutes . ' minutes'));
                     $item->setStatus(QueueItem::STATUS_PENDING);
                 } else {
                     $item->setStatus(QueueItem::STATUS_FAILED);
@@ -123,13 +138,25 @@ class QueueService
             'phone'      => $fields['phone'] ?? null,
         ];
 
+        // include stored Apollo contact id for upsert if available
+        $apolloId = $this->getFieldValue($lead, self::CONTACT_ID_FIELD);
+        if ($apolloId) {
+            $payload['id'] = $apolloId;
+        }
+
         // Attach company if present
         $companies = method_exists($lead, 'getCompanies') ? $lead->getCompanies() : [];
         if (!empty($companies)) {
             $company = is_array($companies) ? reset($companies) : $companies->first();
             if ($company) {
-                $payload['company_name'] = $company->getName();
-                $payload['domain']       = $company->getWebsite();
+                if (method_exists($company, 'getName')) {
+                    $payload['company_name'] = $company->getName();
+                } elseif (method_exists($company, 'getCompanyname')) {
+                    $payload['company_name'] = $company->getCompanyname();
+                }
+                if (method_exists($company, 'getWebsite')) {
+                    $payload['domain'] = $company->getWebsite();
+                }
             }
         }
 
@@ -138,7 +165,23 @@ class QueueService
             throw new \RuntimeException('Cannot push lead without email');
         }
 
-        $this->client->upsertContact($payload);
+        $response = $this->client->upsertContact($payload);
+
+        // capture returned Apollo IDs
+        $contactData = $response['contact'] ?? $response['person'] ?? $response ?? [];
+        if (is_array($contactData)) {
+            if (!empty($contactData['id'])) {
+                $this->setFieldValue($lead, self::CONTACT_ID_FIELD, $contactData['id']);
+            }
+            if (!empty($contactData['organization_id']) && !empty($companies)) {
+                $company = is_array($companies) ? reset($companies) : $companies->first();
+                if ($company) {
+                    $this->setCompanyFieldValue($company, self::COMPANY_ID_FIELD, $contactData['organization_id']);
+                    $this->companyModel->saveEntity($company);
+                }
+            }
+            $this->leadModel->saveEntity($lead);
+        }
     }
 
     private function pushOptOut(Lead $lead, string $reason): void
@@ -157,5 +200,35 @@ class QueueService
     {
         $message = $e->getMessage();
         return (strpos($message, '429') !== false) || (strpos($message, 'rate') !== false);
+    }
+
+    private function getFieldValue(Lead $lead, string $field)
+    {
+        if (method_exists($lead, 'getFieldValue')) {
+            return $lead->getFieldValue($field);
+        }
+        if (method_exists($lead, 'getProfileFields')) {
+            $fields = $lead->getProfileFields();
+            return $fields[$field] ?? null;
+        }
+        return null;
+    }
+
+    private function setFieldValue(Lead $lead, string $field, $value): void
+    {
+        if (method_exists($lead, 'setFieldValue')) {
+            $lead->setFieldValue($field, $value);
+        } elseif (method_exists($lead, 'addUpdatedField')) {
+            $lead->addUpdatedField($field, $value);
+        }
+    }
+
+    private function setCompanyFieldValue($company, string $field, $value): void
+    {
+        if ($company && method_exists($company, 'setFieldValue')) {
+            $company->setFieldValue($field, $value);
+        } elseif ($company && method_exists($company, 'addUpdatedField')) {
+            $company->addUpdatedField($field, $value);
+        }
     }
 }

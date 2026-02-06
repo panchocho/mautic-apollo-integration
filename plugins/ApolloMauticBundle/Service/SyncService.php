@@ -11,6 +11,9 @@ use Psr\Log\LoggerInterface;
 
 class SyncService
 {
+    private const CONTACT_ID_FIELD = 'apollo_contact_id';
+    private const COMPANY_ID_FIELD = 'apollo_company_id';
+
     private IntegrationHelper $integrationHelper;
     private ApolloApiClient $client;
     private LeadModel $leadModel;
@@ -103,7 +106,15 @@ class SyncService
         }
 
         $repo = $this->leadModel->getRepository();
-        $lead = $repo->findOneBy(['email' => $email]);
+
+        // Prefer matching by stored Apollo contact id, fallback to email
+        $lead = null;
+        if (!empty($contact['id']) && $this->repoHasField($repo, self::CONTACT_ID_FIELD)) {
+            $lead = $repo->findOneBy([self::CONTACT_ID_FIELD => $contact['id']]);
+        }
+        if (!$lead) {
+            $lead = $repo->findOneBy(['email' => $email]);
+        }
         if (!$lead instanceof Lead) {
             $lead = new Lead();
             $lead->setEmail($email);
@@ -128,12 +139,24 @@ class SyncService
             $lead->setPhone($contact['phone']);
         }
 
+        // Persist Apollo contact id for future upserts
+        if (!empty($contact['id'])) {
+            $this->setFieldValue($lead, self::CONTACT_ID_FIELD, $contact['id']);
+        }
+
         // Company mapping
         if (!empty($contact['organization_name']) || !empty($contact['domain'])) {
             $companyName = $contact['organization_name'] ?? $contact['domain'];
             $domain      = $contact['domain'] ?? null;
             $companyRepo = $this->companyModel->getRepository();
-            $company = $companyRepo->findOneBy(['companyname' => $companyName]);
+            // first try by stored Apollo company id
+            $company = null;
+            if (!empty($contact['organization_id']) && $this->companyRepoHasField($companyRepo, self::COMPANY_ID_FIELD)) {
+                $company = $companyRepo->findOneBy([self::COMPANY_ID_FIELD => $contact['organization_id']]);
+            }
+            if (!$company) {
+                $company = $companyRepo->findOneBy(['companyname' => $companyName]);
+            }
             if (!$company instanceof Company) {
                 $company = new Company();
                 $company->setCompanyname($companyName);
@@ -142,11 +165,56 @@ class SyncService
                 }
                 $this->companyModel->saveEntity($company);
             }
+            if (!empty($contact['organization_id'])) {
+                $this->setCompanyFieldValue($company, self::COMPANY_ID_FIELD, $contact['organization_id']);
+                $this->companyModel->saveEntity($company);
+            }
             if (method_exists($lead, 'addCompany')) {
                 $lead->addCompany($company);
             }
         }
 
         $this->leadModel->saveEntity($lead);
+    }
+
+    private function fieldAlias(string $field): string
+    {
+        return $field;
+    }
+
+    private function setFieldValue(Lead $lead, string $field, $value): void
+    {
+        if (method_exists($lead, 'setFieldValue')) {
+            $lead->setFieldValue($field, $value);
+        } elseif (method_exists($lead, 'addUpdatedField')) {
+            $lead->addUpdatedField($field, $value);
+        }
+    }
+
+    private function setCompanyFieldValue(Company $company, string $field, $value): void
+    {
+        if (method_exists($company, 'setFieldValue')) {
+            $company->setFieldValue($field, $value);
+        } elseif (method_exists($company, 'addUpdatedField')) {
+            $company->addUpdatedField($field, $value);
+        }
+    }
+
+    private function repoHasField($repo, string $field): bool
+    {
+        if (method_exists($repo, 'getClassMetadata')) {
+            $meta = $repo->getClassMetadata();
+            return $meta->hasField($field);
+        }
+        return false;
+    }
+
+    private function companyRepoHasField($repo, string $field): bool
+    {
+        if (method_exists($repo, 'getClassMetadata')) {
+            $meta = $repo->getClassMetadata();
+            return $meta->hasField($field);
+        }
+        return false;
     }
 }

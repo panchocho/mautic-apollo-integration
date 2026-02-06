@@ -37,13 +37,24 @@ class QueueItem
     private string $status = self::STATUS_PENDING;
 
     /**
+     * @ORM\Column(type="integer")
+     */
+    private int $attempts = 0;
+
+    /**
      * @ORM\Column(type="datetime")
      */
     private \DateTimeInterface $createdAt;
 
+    /**
+     * @ORM\Column(type="datetime")
+     */
+    private \DateTimeInterface $nextAttemptAt;
+
     public function __construct()
     {
         $this->createdAt = new \DateTimeImmutable();
+        $this->nextAttemptAt = new \DateTimeImmutable();
     }
 
     public function getId(): ?int
@@ -79,6 +90,26 @@ class QueueItem
     public function setStatus(string $status): void
     {
         $this->status = $status;
+    }
+
+    public function getAttempts(): int
+    {
+        return $this->attempts;
+    }
+
+    public function incrementAttempts(): void
+    {
+        $this->attempts++;
+    }
+
+    public function getNextAttemptAt(): \DateTimeInterface
+    {
+        return $this->nextAttemptAt;
+    }
+
+    public function setNextAttemptAt(\DateTimeInterface $dt): void
+    {
+        $this->nextAttemptAt = $dt;
     }
 
     public function getCreatedAt(): \DateTimeInterface

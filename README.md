@@ -24,8 +24,21 @@ Plugin de Mautic (type `mautic-plugin`) para sincronizar contactos y empresas co
 - **Pull incremental de contactos** (Apollo → Mautic) equivalente a \"New/Updated Contact\" trigger.
 - **Paginación + cursor** en pulls continuos (se guarda `last_sync_ts`).
 - **Rate limit handling**: reintento en cola ante respuesta 429 de Apollo.
+- **Backoff progresivo**: la cola reintenta con ventana creciente hasta 5 intentos.
 
 ## Pendiente
-- Mapeo completo Lead/Company en SyncService.
-- Manejo de rate limit 429 y backoff en QueueService.
-- UI de mapping de campos y opt-out.
+- Mapeo avanzado (custom fields, tags/segmentos) y opt-out UI.
+- Publicar en Marketplace / empaquetar con icono y traducciones completas.
+
+## Migraciones
+- Ejecutar las migraciones del plugin para añadir `attempts` y `next_attempt_at` en la cola:
+  ```bash
+  php bin/console doctrine:migrations:migrate --prefix="Apollo\\MauticBundle\\Migrations"
+  ```
+
+## Campos recomendados
+Crea dos campos personalizados en Mautic para mejor upsert/dedupe:
+- Lead field `apollo_contact_id` (texto) para guardar el ID de contacto en Apollo.
+- Company field `apollo_company_id` (texto) para guardar el ID de organización en Apollo.
+
+Si los campos no existen, el plugin sigue funcionando por email/dominio, pero no podrá reusar IDs en los upserts.
