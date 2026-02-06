@@ -1,0 +1,147 @@
+<?php
+
+namespace Apollo\MauticBundle\Service;
+
+use Mautic\CompanyBundle\Entity\Company;
+use Mautic\CompanyBundle\Model\CompanyModel;
+use Mautic\LeadBundle\Entity\Lead;
+use Mautic\LeadBundle\Model\LeadModel;
+use Mautic\PluginBundle\Helper\IntegrationHelper;
+use Psr\Log\LoggerInterface;
+
+class SyncService
+{
+    private IntegrationHelper $integrationHelper;
+    private ApolloApiClient $client;
+    private LeadModel $leadModel;
+    private CompanyModel $companyModel;
+    private LoggerInterface $logger;
+
+    public function __construct(
+        IntegrationHelper $integrationHelper,
+        ApolloApiClient $client,
+        LeadModel $leadModel,
+        CompanyModel $companyModel,
+        LoggerInterface $logger
+    ) {
+        $this->integrationHelper = $integrationHelper;
+        $this->client            = $client;
+        $this->leadModel         = $leadModel;
+        $this->companyModel      = $companyModel;
+        $this->logger            = $logger;
+    }
+
+    /**
+     * Pull contacts from Apollo into Mautic.
+     * Returns number of processed records.
+     */
+    public function pullFromApollo(): int
+    {
+        if (!$this->client->isConfigured()) {
+            return 0;
+        }
+
+        // Minimal stub: perform search with updated_at filter using stored cursor
+        $integration = $this->integrationHelper->getIntegrationObject('Apollo');
+        $settings    = [];
+        if ($integration && method_exists($integration, 'getIntegrationSettings')) {
+            $integrationSettings = $integration->getIntegrationSettings();
+            if ($integrationSettings && method_exists($integrationSettings, 'getFeatureSettings')) {
+                $settings = $integrationSettings->getFeatureSettings() ?? [];
+            }
+        } elseif ($integration && method_exists($integration, 'mergeConfigToFeatureSettings')) {
+            $settings = $integration->mergeConfigToFeatureSettings() ?? [];
+        }
+        $cursor = $settings['last_sync_ts'] ?? null;
+
+        $query = [
+            'page'        => 1,
+            'person_titles' => [],
+        ];
+        if ($cursor) {
+            $query['updated_at'] = ['gte' => $cursor];
+        }
+
+        $response = $this->client->searchContacts($query);
+        $contacts = $response['contacts'] ?? [];
+
+        $processed = 0;
+        foreach ($contacts as $contact) {
+            $this->upsertLeadFromApollo($contact);
+            ++$processed;
+        }
+
+        $this->logger->info('Pulled contacts from Apollo', ['count' => $processed]);
+
+        if (!empty($response['pagination']['next_page'])) {
+            // In full implementation, iterate pages; here we just note.
+            $this->logger->warning('Additional pages exist; pagination not yet implemented in stub.');
+        }
+
+        // Save new cursor (latest updated_at) into integration settings
+        if (!empty($contacts) && $integration && method_exists($integration, 'getIntegrationSettings')) {
+            $latest = max(array_column($contacts, 'updated_at'));
+            $integrationSettings = $integration->getIntegrationSettings();
+            if ($integrationSettings && method_exists($integrationSettings, 'setFeatureSettings')) {
+                $integrationSettings->setFeatureSettings(array_merge($settings, ['last_sync_ts' => $latest]));
+            }
+        }
+
+        return $processed;
+    }
+
+    private function upsertLeadFromApollo(array $contact): void
+    {
+        $email = $contact['email'] ?? null;
+        if (!$email) {
+            return;
+        }
+
+        $repo = $this->leadModel->getRepository();
+        $lead = $repo->findOneBy(['email' => $email]);
+        if (!$lead instanceof Lead) {
+            $lead = new Lead();
+            $lead->setEmail($email);
+        }
+
+        if (!empty($contact['first_name'])) {
+            $lead->setFirstname($contact['first_name']);
+        }
+        if (!empty($contact['last_name'])) {
+            $lead->setLastname($contact['last_name']);
+        }
+        if (!empty($contact['title'])) {
+            if (method_exists($lead, 'setJobTitle')) {
+                $lead->setJobTitle($contact['title']);
+            } elseif (method_exists($lead, 'setTitle')) {
+                $lead->setTitle($contact['title']);
+            } elseif (method_exists($lead, 'addUpdatedField')) {
+                $lead->addUpdatedField('position', $contact['title']);
+            }
+        }
+        if (!empty($contact['phone'])) {
+            $lead->setPhone($contact['phone']);
+        }
+
+        // Company mapping
+        if (!empty($contact['organization_name']) || !empty($contact['domain'])) {
+            $companyName = $contact['organization_name'] ?? $contact['domain'];
+            $domain      = $contact['domain'] ?? null;
+            $companyRepo = $this->companyModel->getRepository();
+            $company = $companyRepo->findOneBy(['companyname' => $companyName]);
+            if (!$company instanceof Company) {
+                $company = new Company();
+                $company->setCompanyname($companyName);
+                if ($domain && method_exists($company, 'setWebsite')) {
+                    $company->setWebsite($domain);
+                }
+                $this->companyModel->saveEntity($company);
+            }
+            if (method_exists($lead, 'addCompany')) {
+                $lead->addCompany($company);
+            }
+        }
+
+        $this->leadModel->saveEntity($lead);
+    }
+}
