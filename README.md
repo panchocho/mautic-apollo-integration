@@ -22,6 +22,8 @@ Plugin de Mautic (type `mautic-plugin`) para sincronizar contactos y empresas co
 - **Create/Update Company** (Apollo → Mautic) cuando llega información de organización/dominio.
 - **Unsubscribe/Opt-out** sincronizado desde Mautic hacia Apollo.
 - **Pull incremental de contactos** (Apollo → Mautic) equivalente a \"New/Updated Contact\" trigger.
+- **Paginación + cursor** en pulls continuos (se guarda `last_sync_ts`).
+- **Rate limit handling**: reintento en cola ante respuesta 429 de Apollo.
 
 ## Pendiente
 - Mapeo completo Lead/Company en SyncService.

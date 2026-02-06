@@ -54,36 +54,41 @@ class SyncService
         }
         $cursor = $settings['last_sync_ts'] ?? null;
 
-        $query = [
-            'page'        => 1,
-            'person_titles' => [],
-        ];
-        if ($cursor) {
-            $query['updated_at'] = ['gte' => $cursor];
-        }
-
-        $response = $this->client->searchContacts($query);
-        $contacts = $response['contacts'] ?? [];
-
+        $page      = 1;
         $processed = 0;
-        foreach ($contacts as $contact) {
-            $this->upsertLeadFromApollo($contact);
-            ++$processed;
-        }
+        $latestTs  = $cursor;
 
-        $this->logger->info('Pulled contacts from Apollo', ['count' => $processed]);
+        do {
+            $query = [
+                'page'          => $page,
+                'person_titles' => [],
+            ];
+            if ($cursor) {
+                $query['updated_at'] = ['gte' => $cursor];
+            }
 
-        if (!empty($response['pagination']['next_page'])) {
-            // In full implementation, iterate pages; here we just note.
-            $this->logger->warning('Additional pages exist; pagination not yet implemented in stub.');
-        }
+            $response = $this->client->searchContacts($query);
+            $contacts = $response['contacts'] ?? [];
+
+            foreach ($contacts as $contact) {
+                $this->upsertLeadFromApollo($contact);
+                $processed++;
+                if (!empty($contact['updated_at'])) {
+                    $latestTs = max($latestTs ?? $contact['updated_at'], $contact['updated_at']);
+                }
+            }
+
+            $hasNext = !empty($response['pagination']['next_page']);
+            $page++;
+        } while ($hasNext);
+
+        $this->logger->info('Pulled contacts from Apollo', ['count' => $processed, 'last_ts' => $latestTs]);
 
         // Save new cursor (latest updated_at) into integration settings
-        if (!empty($contacts) && $integration && method_exists($integration, 'getIntegrationSettings')) {
-            $latest = max(array_column($contacts, 'updated_at'));
+        if ($latestTs && $integration && method_exists($integration, 'getIntegrationSettings')) {
             $integrationSettings = $integration->getIntegrationSettings();
             if ($integrationSettings && method_exists($integrationSettings, 'setFeatureSettings')) {
-                $integrationSettings->setFeatureSettings(array_merge($settings, ['last_sync_ts' => $latest]));
+                $integrationSettings->setFeatureSettings(array_merge($settings, ['last_sync_ts' => $latestTs]));
             }
         }
 

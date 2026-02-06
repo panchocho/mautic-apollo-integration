@@ -85,6 +85,10 @@ class ApolloApiClient
         $body   = $response->toArray(false);
 
         if ($status >= 400) {
+            // Bubble up rate limit to allow queue retry/backoff
+            if ($status === 429) {
+                throw new \RuntimeException('Apollo API error 429 rate limit');
+            }
             $this->logger->error('Apollo API error', ['status' => $status, 'body' => $body]);
             throw new \RuntimeException('Apollo API error '.$status);
         }

@@ -68,6 +68,8 @@ class QueueService
                 ]);
                 // simple retry strategy: leave as pending on 429, else mark failed
                 if ($this->isRateLimit($e)) {
+                    // leave pending for retry; brief sleep to respect rate
+                    usleep(300000);
                     $item->setStatus(QueueItem::STATUS_PENDING);
                 } else {
                     $item->setStatus(QueueItem::STATUS_FAILED);
