@@ -1,8 +1,8 @@
 <?php
 
-namespace Mautic\ApolloBundle\EventListener;
+namespace MauticPlugin\ApolloBundle\EventListener;
 
-use Mautic\ApolloBundle\Service\QueueService;
+use MauticPlugin\ApolloBundle\Service\QueueService;
 use Mautic\CoreBundle\EventListener\CommonSubscriber;
 use Mautic\LeadBundle\Event\LeadEvent;
 use Mautic\LeadBundle\LeadEvents;

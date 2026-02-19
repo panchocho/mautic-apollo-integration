@@ -1,6 +1,6 @@
 <?php
 
-namespace Mautic\ApolloBundle;
+namespace MauticPlugin\ApolloBundle;
 
 use Mautic\PluginBundle\Bundle\PluginBundleBase;
 

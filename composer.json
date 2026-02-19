@@ -9,7 +9,7 @@
   },
   "autoload": {
     "psr-4": {
-      "Mautic\\ApolloBundle\\": "plugins/MauticApolloBundle/"
+      "MauticPlugin\\ApolloBundle\\": "plugins/MauticApolloBundle/"
     }
   }
 }

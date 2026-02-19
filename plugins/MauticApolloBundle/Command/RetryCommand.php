@@ -1,8 +1,8 @@
 <?php
 
-namespace Mautic\ApolloBundle\Command;
+namespace MauticPlugin\ApolloBundle\Command;
 
-use Mautic\ApolloBundle\Service\QueueService;
+use MauticPlugin\ApolloBundle\Service\QueueService;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;

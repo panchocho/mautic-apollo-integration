@@ -1,9 +1,9 @@
 <?php
 
-namespace Mautic\ApolloBundle\Service;
+namespace MauticPlugin\ApolloBundle\Service;
 
-use Mautic\ApolloBundle\Entity\QueueItem;
-use Mautic\ApolloBundle\Service\ApolloApiClient;
+use MauticPlugin\ApolloBundle\Entity\QueueItem;
+use MauticPlugin\ApolloBundle\Service\ApolloApiClient;
 use Doctrine\ORM\EntityManagerInterface;
 use Mautic\CompanyBundle\Model\CompanyModel;
 use Mautic\LeadBundle\Entity\Lead;

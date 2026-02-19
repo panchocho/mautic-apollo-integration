@@ -9,12 +9,12 @@ return [
         'main' => [
             'apollo_webhook_test' => [
                 'path'       => '/plugin/apollo/webhook/test',
-                'controller' => 'Mautic\\ApolloBundle\\Controller\\WebhookController::testAction',
+                'controller' => 'MauticPlugin\\ApolloBundle\\Controller\\WebhookController::testAction',
                 'methods'    => ['GET'],
             ],
             'apollo_queue_push' => [
                 'path'       => '/plugin/apollo/push',
-                'controller' => 'Mautic\\ApolloBundle\\Controller\\WebhookController::pushAction',
+                'controller' => 'MauticPlugin\\ApolloBundle\\Controller\\WebhookController::pushAction',
                 'methods'    => ['POST'],
             ],
         ],
@@ -22,21 +22,21 @@ return [
     'services'    => [
         'events'     => [
             'apollo.form.subscriber' => [
-                'class'     => 'Mautic\\ApolloBundle\\EventListener\\FormSubmissionSubscriber',
+                'class'     => 'MauticPlugin\\ApolloBundle\\EventListener\\FormSubmissionSubscriber',
                 'arguments' => [
                     'apollo.sync.queue',
                     'mautic.helper.integration',
                 ],
             ],
             'apollo.lead.subscriber' => [
-                'class'     => 'Mautic\\ApolloBundle\\EventListener\\LeadUpdateSubscriber',
+                'class'     => 'MauticPlugin\\ApolloBundle\\EventListener\\LeadUpdateSubscriber',
                 'arguments' => [
                     'apollo.sync.queue',
                     'mautic.helper.integration',
                 ],
             ],
             'apollo.dnc.subscriber' => [
-                'class'     => 'Mautic\\ApolloBundle\\EventListener\\DoNotContactSubscriber',
+                'class'     => 'MauticPlugin\\ApolloBundle\\EventListener\\DoNotContactSubscriber',
                 'arguments' => [
                     'apollo.sync.queue',
                     'mautic.helper.integration',
@@ -46,7 +46,7 @@ return [
         'forms'      => [],
         'integrations' => [
             'apollo.integration' => [
-                'class'     => 'Mautic\\ApolloBundle\\Integration\\ApolloIntegration',
+                'class'     => 'MauticPlugin\\ApolloBundle\\Integration\\ApolloIntegration',
                 'arguments' => [
                     'translator',
                     'mautic.helper.integration',
@@ -57,7 +57,7 @@ return [
         'models'     => [],
         'commands'   => [
             'apollo.command.pull' => [
-                'class'     => 'Mautic\\ApolloBundle\\Command\\PullCommand',
+                'class'     => 'MauticPlugin\\ApolloBundle\\Command\\PullCommand',
                 'arguments' => [
                     'apollo.api.client',
                     'apollo.sync.service',
@@ -68,7 +68,7 @@ return [
                 'tag' => 'console.command',
             ],
             'apollo.command.retry' => [
-                'class'     => 'Mautic\\ApolloBundle\\Command\\RetryCommand',
+                'class'     => 'MauticPlugin\\ApolloBundle\\Command\\RetryCommand',
                 'arguments' => [
                     'apollo.sync.queue',
                     'logger',
@@ -78,7 +78,7 @@ return [
         ],
         'other'      => [
             'apollo.api.client' => [
-                'class'     => 'Mautic\\ApolloBundle\\Service\\ApolloApiClient',
+                'class'     => 'MauticPlugin\\ApolloBundle\\Service\\ApolloApiClient',
                 'arguments' => [
                     'mautic.helper.integration',
                     'translator',
@@ -87,7 +87,7 @@ return [
                 ],
             ],
             'apollo.sync.service' => [
-                'class'     => 'Mautic\\ApolloBundle\\Service\\SyncService',
+                'class'     => 'MauticPlugin\\ApolloBundle\\Service\\SyncService',
                 'arguments' => [
                     'mautic.helper.integration',
                     'apollo.api.client',
@@ -97,7 +97,7 @@ return [
                 ],
             ],
             'apollo.sync.queue' => [
-                'class'     => 'Mautic\\ApolloBundle\\Service\\QueueService',
+                'class'     => 'MauticPlugin\\ApolloBundle\\Service\\QueueService',
                 'arguments' => [
                     'doctrine.orm.entity_manager',
                     'apollo.api.client',
