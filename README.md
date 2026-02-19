@@ -33,7 +33,7 @@ Plugin de Mautic (type `mautic-plugin`) para sincronizar contactos y empresas co
 ## Migraciones
 - Ejecutar las migraciones del plugin para añadir `attempts` y `next_attempt_at` en la cola:
   ```bash
-  php bin/console doctrine:migrations:migrate --prefix="Apollo\\MauticBundle\\Migrations"
+  php bin/console doctrine:migrations:migrate --prefix="Mautic\\ApolloBundle\\Migrations"
   ```
 
 ## Campos recomendados
