@@ -3,12 +3,12 @@
 namespace MauticPlugin\MauticApolloBundle\EventListener;
 
 use MauticPlugin\MauticApolloBundle\Service\QueueService;
-use Mautic\CoreBundle\EventListener\CommonSubscriber;
 use Mautic\LeadBundle\Event\LeadEvent;
 use Mautic\LeadBundle\LeadEvents;
 use Mautic\PluginBundle\Helper\IntegrationHelper;
+use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
-class LeadUpdateSubscriber extends CommonSubscriber
+class LeadUpdateSubscriber implements EventSubscriberInterface
 {
     private QueueService $queue;
     private IntegrationHelper $integrationHelper;

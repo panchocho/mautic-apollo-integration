@@ -3,12 +3,12 @@
 namespace MauticPlugin\MauticApolloBundle\EventListener;
 
 use MauticPlugin\MauticApolloBundle\Service\QueueService;
-use Mautic\CoreBundle\EventListener\CommonSubscriber;
 use Mautic\FormBundle\FormEvents as MauticFormEvents;
 use Mautic\FormBundle\Event\FormSubmitEvent;
 use Mautic\PluginBundle\Helper\IntegrationHelper;
+use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
-class FormSubmissionSubscriber extends CommonSubscriber
+class FormSubmissionSubscriber implements EventSubscriberInterface
 {
     private QueueService $queue;
     private IntegrationHelper $integrationHelper;

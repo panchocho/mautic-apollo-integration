@@ -3,12 +3,12 @@
 namespace MauticPlugin\MauticApolloBundle\EventListener;
 
 use MauticPlugin\MauticApolloBundle\Service\QueueService;
-use Mautic\CoreBundle\EventListener\CommonSubscriber;
 use Mautic\LeadBundle\LeadEvents;
 use Mautic\LeadBundle\Event\DoNotContactEvent;
 use Mautic\PluginBundle\Helper\IntegrationHelper;
+use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
-class DoNotContactSubscriber extends CommonSubscriber
+class DoNotContactSubscriber implements EventSubscriberInterface
 {
     private QueueService $queue;
     private IntegrationHelper $integrationHelper;
