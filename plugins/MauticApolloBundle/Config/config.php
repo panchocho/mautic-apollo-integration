@@ -77,6 +77,12 @@ return [
             ],
         ],
         'other'      => [
+            'MauticPlugin\\MauticApolloBundle\\Controller\\WebhookController' => [
+                'class'     => 'MauticPlugin\\MauticApolloBundle\\Controller\\WebhookController',
+                'arguments' => [
+                    'apollo.sync.queue',
+                ],
+            ],
             'apollo.api.client' => [
                 'class'     => 'MauticPlugin\\MauticApolloBundle\\Service\\ApolloApiClient',
                 'arguments' => [
