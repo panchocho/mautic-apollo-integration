@@ -1,6 +1,6 @@
 <?php
 
-namespace Apollo\MauticBundle\Service;
+namespace Mautic\ApolloBundle\Service;
 
 use Mautic\CompanyBundle\Entity\Company;
 use Mautic\CompanyBundle\Model\CompanyModel;

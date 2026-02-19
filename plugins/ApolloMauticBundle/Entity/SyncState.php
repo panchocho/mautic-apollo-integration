@@ -1,6 +1,6 @@
 <?php
 
-namespace Apollo\MauticBundle\Entity;
+namespace Mautic\ApolloBundle\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 

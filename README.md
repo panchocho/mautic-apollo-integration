@@ -3,7 +3,7 @@
 Plugin de Mautic (type `mautic-plugin`) para sincronizar contactos y empresas con Apollo.io.
 
 ## Instalación rápida
-1. Copiar carpeta `plugins/ApolloMauticBundle` dentro de la instancia de Mautic o instalar vía Composer:
+1. Copiar carpeta `plugins/MauticApolloBundle` dentro de la instancia de Mautic o instalar vía Composer:
    ```bash
    composer require pancho/mautic-apollo-plugin:0.1.0
    php bin/console cache:clear

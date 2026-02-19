@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Apollo\MauticBundle\Migrations;
+namespace Mautic\ApolloBundle\Migrations;
 
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\Migrations\AbstractMigration;

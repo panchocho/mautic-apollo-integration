@@ -1,8 +1,8 @@
 <?php
 
-namespace Apollo\MauticBundle\EventListener;
+namespace Mautic\ApolloBundle\EventListener;
 
-use Apollo\MauticBundle\Service\QueueService;
+use Mautic\ApolloBundle\Service\QueueService;
 use Mautic\CoreBundle\EventListener\CommonSubscriber;
 use Mautic\LeadBundle\LeadEvents;
 use Mautic\LeadBundle\Event\DoNotContactEvent;
