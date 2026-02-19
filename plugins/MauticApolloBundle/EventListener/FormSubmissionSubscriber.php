@@ -1,8 +1,8 @@
 <?php
 
-namespace MauticPlugin\ApolloBundle\EventListener;
+namespace MauticPlugin\MauticApolloBundle\EventListener;
 
-use MauticPlugin\ApolloBundle\Service\QueueService;
+use MauticPlugin\MauticApolloBundle\Service\QueueService;
 use Mautic\CoreBundle\EventListener\CommonSubscriber;
 use Mautic\FormBundle\FormEvents as MauticFormEvents;
 use Mautic\FormBundle\Event\FormSubmitEvent;

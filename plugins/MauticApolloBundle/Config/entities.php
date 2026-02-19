@@ -1,13 +1,13 @@
 <?php
 
 return [
-    'MauticPlugin\\ApolloBundle\\Entity\\SyncState' => [
-        'class' => 'MauticPlugin\\ApolloBundle\\Entity\\SyncState',
+    'MauticPlugin\\MauticApolloBundle\\Entity\\SyncState' => [
+        'class' => 'MauticPlugin\\MauticApolloBundle\\Entity\\SyncState',
         'alias' => 'apollo_sync_state',
         'mapping' => true,
     ],
-    'MauticPlugin\\ApolloBundle\\Entity\\QueueItem' => [
-        'class' => 'MauticPlugin\\ApolloBundle\\Entity\\QueueItem',
+    'MauticPlugin\\MauticApolloBundle\\Entity\\QueueItem' => [
+        'class' => 'MauticPlugin\\MauticApolloBundle\\Entity\\QueueItem',
         'alias' => 'apollo_queue_item',
         'mapping' => true,
     ],

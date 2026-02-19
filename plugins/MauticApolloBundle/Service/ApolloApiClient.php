@@ -1,6 +1,6 @@
 <?php
 
-namespace MauticPlugin\ApolloBundle\Service;
+namespace MauticPlugin\MauticApolloBundle\Service;
 
 use Mautic\PluginBundle\Helper\IntegrationHelper;
 use Psr\Log\LoggerInterface;

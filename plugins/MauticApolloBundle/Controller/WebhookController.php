@@ -1,8 +1,8 @@
 <?php
 
-namespace MauticPlugin\ApolloBundle\Controller;
+namespace MauticPlugin\MauticApolloBundle\Controller;
 
-use MauticPlugin\ApolloBundle\Service\QueueService;
+use MauticPlugin\MauticApolloBundle\Service\QueueService;
 use Mautic\CoreBundle\Controller\CommonController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;

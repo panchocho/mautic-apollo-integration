@@ -1,9 +1,9 @@
 <?php
 
-namespace MauticPlugin\ApolloBundle\Command;
+namespace MauticPlugin\MauticApolloBundle\Command;
 
-use MauticPlugin\ApolloBundle\Service\ApolloApiClient;
-use MauticPlugin\ApolloBundle\Service\SyncService;
+use MauticPlugin\MauticApolloBundle\Service\ApolloApiClient;
+use MauticPlugin\MauticApolloBundle\Service\SyncService;
 use Mautic\CompanyBundle\Model\CompanyModel;
 use Mautic\LeadBundle\Model\LeadModel;
 use Psr\Log\LoggerInterface;

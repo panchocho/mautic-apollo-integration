@@ -1,8 +1,8 @@
 <?php
 
-namespace MauticPlugin\ApolloBundle\Integration;
+namespace MauticPlugin\MauticApolloBundle\Integration;
 
-use MauticPlugin\ApolloBundle\Service\SyncService;
+use MauticPlugin\MauticApolloBundle\Service\SyncService;
 use Mautic\PluginBundle\Helper\IntegrationHelper;
 use Mautic\PluginBundle\Integration\AbstractIntegration;
 use Mautic\PluginBundle\Integration\IntegrationInterface;
