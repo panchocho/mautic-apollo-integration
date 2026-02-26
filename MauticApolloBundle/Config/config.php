@@ -4,7 +4,7 @@ return [
     'name'        => 'Apollo.io Integration',
     'description' => 'Bidirectional sync between Apollo.io and Mautic contacts/companies.',
     'version'     => '0.1.0',
-    'author'      => 'Pancho',
+    'author'      => 'panchocho',
     'routes'      => [
         'main' => [
             'apollo_webhook_test' => [
