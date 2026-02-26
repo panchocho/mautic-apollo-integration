@@ -4,7 +4,7 @@ namespace MauticPlugin\MauticApolloBundle\Command;
 
 use MauticPlugin\MauticApolloBundle\Service\ApolloApiClient;
 use MauticPlugin\MauticApolloBundle\Service\SyncService;
-use Mautic\CompanyBundle\Model\CompanyModel;
+use Mautic\LeadBundle\Model\CompanyModel;
 use Mautic\LeadBundle\Model\LeadModel;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Command\Command;
@@ -38,6 +38,7 @@ class PullCommand extends Command
 
     protected function configure(): void
     {
+        $this->setName('mautic:apollo:pull');
         $this->setDescription('Pull incremental contacts/companies from Apollo into Mautic.');
     }
 

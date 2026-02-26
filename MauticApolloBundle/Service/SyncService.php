@@ -2,9 +2,12 @@
 
 namespace MauticPlugin\MauticApolloBundle\Service;
 
-use Mautic\CompanyBundle\Entity\Company;
-use Mautic\CompanyBundle\Model\CompanyModel;
+use Doctrine\ORM\EntityManagerInterface;
+
+use Mautic\LeadBundle\Entity\Company;
+use Mautic\LeadBundle\Model\CompanyModel;
 use Mautic\LeadBundle\Entity\Lead;
+use Mautic\LeadBundle\Field\SchemaDefinition;
 use Mautic\LeadBundle\Model\LeadModel;
 use Mautic\PluginBundle\Helper\IntegrationHelper;
 use Psr\Log\LoggerInterface;
@@ -16,6 +19,7 @@ class SyncService
 
     private IntegrationHelper $integrationHelper;
     private ApolloApiClient $client;
+    private EntityManagerInterface $em;
     private LeadModel $leadModel;
     private CompanyModel $companyModel;
     private LoggerInterface $logger;
@@ -23,12 +27,14 @@ class SyncService
     public function __construct(
         IntegrationHelper $integrationHelper,
         ApolloApiClient $client,
+        EntityManagerInterface $em,
         LeadModel $leadModel,
         CompanyModel $companyModel,
         LoggerInterface $logger
     ) {
         $this->integrationHelper = $integrationHelper;
         $this->client            = $client;
+        $this->em                = $em;
         $this->leadModel         = $leadModel;
         $this->companyModel      = $companyModel;
         $this->logger            = $logger;
@@ -98,6 +104,21 @@ class SyncService
         return $processed;
     }
 
+    private function truncateString(?string $value, int $max): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        $value = trim($value);
+        if ($value == '') {
+            return null;
+        }
+        if (strlen($value) > $max) {
+            return substr($value, 0, $max);
+        }
+        return $value;
+    }
+
     private function upsertLeadFromApollo(array $contact): void
     {
         $email = $contact['email'] ?? null;
@@ -109,7 +130,7 @@ class SyncService
 
         // Prefer matching by stored Apollo contact id, fallback to email
         $lead = null;
-        if (!empty($contact['id']) && $this->repoHasField($repo, self::CONTACT_ID_FIELD)) {
+        if (!empty($contact['id']) && $this->leadHasField(self::CONTACT_ID_FIELD)) {
             $lead = $repo->findOneBy([self::CONTACT_ID_FIELD => $contact['id']]);
         }
         if (!$lead) {
@@ -135,12 +156,13 @@ class SyncService
                 $lead->addUpdatedField('position', $contact['title']);
             }
         }
-        if (!empty($contact['phone'])) {
-            $lead->setPhone($contact['phone']);
+        $phone = $this->truncateString($contact['phone'] ?? null, SchemaDefinition::MAX_VARCHAR_LENGTH);
+        if ($phone) {
+            $lead->setPhone($phone);
         }
 
         // Persist Apollo contact id for future upserts
-        if (!empty($contact['id'])) {
+        if (!empty($contact['id']) && $this->leadHasField(self::CONTACT_ID_FIELD)) {
             $this->setFieldValue($lead, self::CONTACT_ID_FIELD, $contact['id']);
         }
 
@@ -151,21 +173,21 @@ class SyncService
             $companyRepo = $this->companyModel->getRepository();
             // first try by stored Apollo company id
             $company = null;
-            if (!empty($contact['organization_id']) && $this->companyRepoHasField($companyRepo, self::COMPANY_ID_FIELD)) {
+            if (!empty($contact['organization_id']) && $this->companyHasField(self::COMPANY_ID_FIELD)) {
                 $company = $companyRepo->findOneBy([self::COMPANY_ID_FIELD => $contact['organization_id']]);
             }
             if (!$company) {
-                $company = $companyRepo->findOneBy(['companyname' => $companyName]);
+                $company = $companyRepo->findOneBy(['name' => $companyName]);
             }
             if (!$company instanceof Company) {
                 $company = new Company();
-                $company->setCompanyname($companyName);
+                $company->setName($companyName);
                 if ($domain && method_exists($company, 'setWebsite')) {
                     $company->setWebsite($domain);
                 }
                 $this->companyModel->saveEntity($company);
             }
-            if (!empty($contact['organization_id'])) {
+            if (!empty($contact['organization_id']) && $this->companyHasField(self::COMPANY_ID_FIELD)) {
                 $this->setCompanyFieldValue($company, self::COMPANY_ID_FIELD, $contact['organization_id']);
                 $this->companyModel->saveEntity($company);
             }
@@ -200,21 +222,13 @@ class SyncService
         }
     }
 
-    private function repoHasField($repo, string $field): bool
+    private function leadHasField(string $field): bool
     {
-        if (method_exists($repo, 'getClassMetadata')) {
-            $meta = $repo->getClassMetadata();
-            return $meta->hasField($field);
-        }
-        return false;
+        return $this->em->getClassMetadata(Lead::class)->hasField($field);
     }
 
-    private function companyRepoHasField($repo, string $field): bool
+    private function companyHasField(string $field): bool
     {
-        if (method_exists($repo, 'getClassMetadata')) {
-            $meta = $repo->getClassMetadata();
-            return $meta->hasField($field);
-        }
-        return false;
+        return $this->em->getClassMetadata(Company::class)->hasField($field);
     }
 }

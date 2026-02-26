@@ -3,9 +3,7 @@
 namespace MauticPlugin\MauticApolloBundle\EventListener;
 
 use MauticPlugin\MauticApolloBundle\Service\QueueService;
-use Mautic\LeadBundle\LeadEvents;
-use Mautic\LeadBundle\Entity\DoNotContact;
-use Mautic\LeadBundle\Event\ChannelSubscriptionChange;
+use Mautic\LeadBundle\Event\DoNotContactAddEvent;
 use Mautic\PluginBundle\Helper\IntegrationHelper;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
@@ -23,23 +21,14 @@ class DoNotContactSubscriber implements EventSubscriberInterface
     public static function getSubscribedEvents(): array
     {
         return [
-            LeadEvents::CHANNEL_SUBSCRIPTION_CHANGED => ['onDncChange', 0],
+            DoNotContactAddEvent::ADD_DONOT_CONTACT => ['onDncAdd', 0],
         ];
     }
 
-    public function onDncChange(ChannelSubscriptionChange $event): void
+    public function onDncAdd(DoNotContactAddEvent $event): void
     {
         $integration = $this->integrationHelper->getIntegrationObject('Apollo');
         if (!$integration || !$integration->isConfigured()) {
-            return;
-        }
-
-        if ($event->getChannel() !== 'email') {
-            return;
-        }
-
-        // Only react when a lead becomes not-contactable
-        if ($event->getNewStatus() === DoNotContact::IS_CONTACTABLE) {
             return;
         }
 
@@ -47,7 +36,7 @@ class DoNotContactSubscriber implements EventSubscriberInterface
         $payload = [
             'type' => 'optout',
             'leadId' => $lead ? $lead->getId() : null,
-            'reason' => $event->getNewStatusVerb(),
+            'reason' => $event->getReason(),
         ];
 
         $this->queue->enqueue('optout', json_encode($payload));

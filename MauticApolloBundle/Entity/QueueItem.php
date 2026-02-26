@@ -2,59 +2,48 @@
 
 namespace MauticPlugin\MauticApolloBundle\Entity;
 
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
 
-/**
- * @ORM\Entity
- * @ORM\Table(name="apollo_queue")
- */
 class QueueItem
 {
     public const STATUS_PENDING = 'pending';
     public const STATUS_DONE    = 'done';
     public const STATUS_FAILED  = 'failed';
 
-    /**
-     * @ORM\Id
-     * @ORM\GeneratedValue
-     * @ORM\Column(type="integer")
-     */
     private ?int $id = null;
 
-    /**
-     * @ORM\Column(type="string", length=50)
-     */
     private string $type;
 
-    /**
-     * @ORM\Column(type="text")
-     */
     private string $payload;
 
-    /**
-     * @ORM\Column(type="string", length=20)
-     */
     private string $status = self::STATUS_PENDING;
 
-    /**
-     * @ORM\Column(type="integer")
-     */
     private int $attempts = 0;
 
-    /**
-     * @ORM\Column(type="datetime")
-     */
     private \DateTimeInterface $createdAt;
 
-    /**
-     * @ORM\Column(type="datetime")
-     */
     private \DateTimeInterface $nextAttemptAt;
 
     public function __construct()
     {
-        $this->createdAt = new \DateTimeImmutable();
+        $this->createdAt    = new \DateTimeImmutable();
         $this->nextAttemptAt = new \DateTimeImmutable();
+    }
+
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
+    {
+        $builder = new ClassMetadataBuilder($metadata);
+
+        $builder->setTable('apollo_queue');
+        $builder->addId();
+        $builder->addField('type', Types::STRING, ['length' => 50]);
+        $builder->addField('payload', Types::TEXT);
+        $builder->addField('status', Types::STRING, ['length' => 20]);
+        $builder->addField('attempts', Types::INTEGER);
+        $builder->addField('createdAt', Types::DATETIME_IMMUTABLE, ['columnName' => 'created_at']);
+        $builder->addField('nextAttemptAt', Types::DATETIME_IMMUTABLE, ['columnName' => 'next_attempt_at']);
     }
 
     public function getId(): ?int

@@ -3,11 +3,11 @@
 namespace MauticPlugin\MauticApolloBundle\Controller;
 
 use MauticPlugin\MauticApolloBundle\Service\QueueService;
-use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Mautic\CoreBundle\Controller\CommonController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 
-class WebhookController extends AbstractController
+class WebhookController extends CommonController
 {
     private QueueService $queueService;
 

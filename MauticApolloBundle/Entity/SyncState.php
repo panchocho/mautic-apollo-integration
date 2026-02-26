@@ -2,30 +2,27 @@
 
 namespace MauticPlugin\MauticApolloBundle\Entity;
 
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
 
-/**
- * @ORM\Entity
- * @ORM\Table(name="apollo_sync_state")
- */
 class SyncState
 {
-    /**
-     * @ORM\Id
-     * @ORM\GeneratedValue
-     * @ORM\Column(type="integer")
-     */
     private ?int $id = null;
 
-    /**
-     * @ORM\Column(type="datetime", nullable=true)
-     */
     private ?\DateTimeInterface $lastContactsSyncAt = null;
 
-    /**
-     * @ORM\Column(type="datetime", nullable=true)
-     */
     private ?\DateTimeInterface $lastAccountsSyncAt = null;
+
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
+    {
+        $builder = new ClassMetadataBuilder($metadata);
+
+        $builder->setTable('apollo_sync_state');
+        $builder->addId();
+        $builder->addNullableField('lastContactsSyncAt', Types::DATETIME_MUTABLE, 'last_contacts_sync_at');
+        $builder->addNullableField('lastAccountsSyncAt', Types::DATETIME_MUTABLE, 'last_accounts_sync_at');
+    }
 
     public function getId(): ?int
     {

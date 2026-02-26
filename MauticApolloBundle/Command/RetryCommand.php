@@ -24,6 +24,7 @@ class RetryCommand extends Command
 
     protected function configure(): void
     {
+        $this->setName('mautic:apollo:retry');
         $this->setDescription('Reprocess pending Apollo queue items.');
     }
 

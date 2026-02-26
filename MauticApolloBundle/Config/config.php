@@ -45,12 +45,25 @@ return [
         ],
         'forms'      => [],
         'integrations' => [
-            'apollo.integration' => [
-                'class'     => 'MauticPlugin\\MauticApolloBundle\\Integration\\ApolloIntegration',
+            'mautic.integration.apollo' => [
+                'class'     => 'MauticPlugin\MauticApolloBundle\Integration\ApolloIntegration',
                 'arguments' => [
+                    'event_dispatcher',
+                    'mautic.helper.cache_storage',
+                    'doctrine.orm.entity_manager',
+                    'request_stack',
+                    'router',
                     'translator',
-                    'mautic.helper.integration',
-                    'apollo.sync.service',
+                    'monolog.logger.mautic',
+                    'mautic.helper.encryption',
+                    'mautic.lead.model.lead',
+                    'mautic.lead.model.company',
+                    'mautic.helper.paths',
+                    'mautic.core.model.notification',
+                    'mautic.lead.model.field',
+                    'mautic.plugin.model.integration_entity',
+                    'mautic.lead.model.dnc',
+                    'mautic.lead.field.fields_with_unique_identifier',
                 ],
             ],
         ],
@@ -62,7 +75,7 @@ return [
                     'apollo.api.client',
                     'apollo.sync.service',
                     'mautic.lead.model.lead',
-                    'mautic.company.model.company',
+                    'mautic.lead.model.company',
                     'logger',
                 ],
                 'tag' => 'console.command',
@@ -77,17 +90,10 @@ return [
             ],
         ],
         'other'      => [
-            'MauticPlugin\\MauticApolloBundle\\Controller\\WebhookController' => [
-                'class'     => 'MauticPlugin\\MauticApolloBundle\\Controller\\WebhookController',
-                'arguments' => [
-                    'apollo.sync.queue',
-                ],
-            ],
             'apollo.api.client' => [
                 'class'     => 'MauticPlugin\\MauticApolloBundle\\Service\\ApolloApiClient',
                 'arguments' => [
                     'mautic.helper.integration',
-                    'translator',
                     'http_client',
                     'logger',
                 ],
@@ -97,8 +103,9 @@ return [
                 'arguments' => [
                     'mautic.helper.integration',
                     'apollo.api.client',
+                    'doctrine.orm.entity_manager',
                     'mautic.lead.model.lead',
-                    'mautic.company.model.company',
+                    'mautic.lead.model.company',
                     'logger',
                 ],
             ],
@@ -108,7 +115,7 @@ return [
                     'doctrine.orm.entity_manager',
                     'apollo.api.client',
                     'mautic.lead.model.lead',
-                    'mautic.company.model.company',
+                    'mautic.lead.model.company',
                     'mautic.helper.integration',
                     'logger',
                 ],
