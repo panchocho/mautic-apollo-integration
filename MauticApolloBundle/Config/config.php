@@ -4,7 +4,7 @@ return [
     'name'        => 'Apollo.io Integration',
     'description' => 'Bidirectional sync between Apollo.io and Mautic contacts/companies.',
     'version'     => '0.1.0',
-    'author'      => 'panchocho',
+    'author'      => 'Pancho',
     'routes'      => [
         'main' => [
             'apollo_webhook_test' => [
@@ -26,6 +26,7 @@ return [
                 'arguments' => [
                     'apollo.sync.queue',
                     'mautic.helper.integration',
+                    'apollo.sync.context',
                 ],
             ],
             'apollo.lead.subscriber' => [
@@ -33,6 +34,7 @@ return [
                 'arguments' => [
                     'apollo.sync.queue',
                     'mautic.helper.integration',
+                    'apollo.sync.context',
                 ],
             ],
             'apollo.dnc.subscriber' => [
@@ -40,6 +42,7 @@ return [
                 'arguments' => [
                     'apollo.sync.queue',
                     'mautic.helper.integration',
+                    'apollo.sync.context',
                 ],
             ],
         ],
@@ -76,6 +79,7 @@ return [
                     'apollo.sync.service',
                     'mautic.lead.model.lead',
                     'mautic.lead.model.company',
+                    'apollo.sync.context',
                     'logger',
                 ],
                 'tag' => 'console.command',
@@ -98,6 +102,10 @@ return [
                     'logger',
                 ],
             ],
+            'apollo.sync.context' => [
+                'class'     => 'MauticPlugin\MauticApolloBundle\Service\SyncContext',
+                'arguments' => [],
+            ],
             'apollo.sync.service' => [
                 'class'     => 'MauticPlugin\\MauticApolloBundle\\Service\\SyncService',
                 'arguments' => [
@@ -117,6 +125,7 @@ return [
                     'mautic.lead.model.lead',
                     'mautic.lead.model.company',
                     'mautic.helper.integration',
+                    'apollo.sync.context',
                     'logger',
                 ],
             ],
