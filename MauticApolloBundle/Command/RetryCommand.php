@@ -32,7 +32,8 @@ class RetryCommand extends Command
     {
         try {
             $processed = $this->queueService->processPending();
-            $output->writeln(sprintf('<info>Processed %d queued payloads.</info>', $processed));
+            $purged = $this->queueService->purgeStaleFailedItems();
+            $output->writeln(sprintf('<info>Processed %d queued payloads. Purged %d stale failed items.</info>', $processed, $purged));
             return Command::SUCCESS;
         } catch (\Throwable $e) {
             $this->logger->error('Apollo retry failed', ['exception' => $e]);
