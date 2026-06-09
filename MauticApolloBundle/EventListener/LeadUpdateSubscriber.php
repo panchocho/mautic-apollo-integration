@@ -3,6 +3,7 @@
 namespace MauticPlugin\MauticApolloBundle\EventListener;
 
 use MauticPlugin\MauticApolloBundle\Service\QueueService;
+use MauticPlugin\MauticApolloBundle\Service\SyncContext;
 use Mautic\LeadBundle\Event\LeadEvent;
 use Mautic\LeadBundle\LeadEvents;
 use Mautic\PluginBundle\Helper\IntegrationHelper;
@@ -12,11 +13,13 @@ class LeadUpdateSubscriber implements EventSubscriberInterface
 {
     private QueueService $queue;
     private IntegrationHelper $integrationHelper;
+    private SyncContext $syncContext;
 
-    public function __construct(QueueService $queue, IntegrationHelper $integrationHelper)
+    public function __construct(QueueService $queue, IntegrationHelper $integrationHelper, SyncContext $syncContext)
     {
         $this->queue             = $queue;
         $this->integrationHelper = $integrationHelper;
+        $this->syncContext       = $syncContext;
     }
 
     public static function getSubscribedEvents(): array
@@ -30,6 +33,9 @@ class LeadUpdateSubscriber implements EventSubscriberInterface
     {
         $integration = $this->integrationHelper->getIntegrationObject('Apollo');
         if (!$integration || !$integration->isConfigured()) {
+            return;
+        }
+        if ($this->syncContext->isApolloImportRunning()) {
             return;
         }
 

@@ -10,12 +10,14 @@ use Mautic\LeadBundle\Entity\Lead;
 use Mautic\LeadBundle\Field\SchemaDefinition;
 use Mautic\LeadBundle\Model\LeadModel;
 use Mautic\PluginBundle\Helper\IntegrationHelper;
+use MauticPlugin\MauticApolloBundle\Entity\SyncState;
 use Psr\Log\LoggerInterface;
 
 class SyncService
 {
     private const CONTACT_ID_FIELD = 'apollo_contact_id';
     private const COMPANY_ID_FIELD = 'apollo_company_id';
+    private const MAX_CONTACTS_PER_RUN = 1000;
 
     private IntegrationHelper $integrationHelper;
     private ApolloApiClient $client;
@@ -50,18 +52,8 @@ class SyncService
             return 0;
         }
 
-        // Minimal stub: perform search with updated_at filter using stored cursor
-        $integration = $this->integrationHelper->getIntegrationObject('Apollo');
-        $settings    = [];
-        if ($integration && method_exists($integration, 'getIntegrationSettings')) {
-            $integrationSettings = $integration->getIntegrationSettings();
-            if ($integrationSettings && method_exists($integrationSettings, 'getFeatureSettings')) {
-                $settings = $integrationSettings->getFeatureSettings() ?? [];
-            }
-        } elseif ($integration && method_exists($integration, 'mergeConfigToFeatureSettings')) {
-            $settings = $integration->mergeConfigToFeatureSettings() ?? [];
-        }
-        $cursor = $settings['last_sync_ts'] ?? null;
+        $state  = $this->getOrCreateSyncState();
+        $cursor = $state->getLastContactsSyncAt();
 
         $page      = 1;
         $processed = 0;
@@ -69,37 +61,41 @@ class SyncService
 
         do {
             $query = [
-                'page'          => $page,
-                'person_titles' => [],
+                'page' => $page,
+                'per_page' => 100,
+                'sort_by_field' => 'contact_updated_at',
+                'sort_ascending' => false,
             ];
-            if ($cursor) {
-                $query['updated_at'] = ['gte' => $cursor];
-            }
 
             $response = $this->client->searchContacts($query);
             $contacts = $response['contacts'] ?? [];
 
             foreach ($contacts as $contact) {
+                if ($processed >= self::MAX_CONTACTS_PER_RUN) {
+                    $this->logger->warning('Apollo pull limit reached for this run', [
+                        'limit' => self::MAX_CONTACTS_PER_RUN,
+                        'last_ts' => $latestTs ? $latestTs->format('c') : null,
+                    ]);
+                    break 2;
+                }
                 $this->upsertLeadFromApollo($contact);
                 $processed++;
                 if (!empty($contact['updated_at'])) {
-                    $latestTs = max($latestTs ?? $contact['updated_at'], $contact['updated_at']);
+                    $ts = new \DateTimeImmutable($contact['updated_at']);
+                    $latestTs = $latestTs ? max($latestTs, $ts) : $ts;
                 }
             }
 
-            $hasNext = !empty($response['pagination']['next_page']);
+            $hasNext = count($contacts) === 100 && $page < 500;
             $page++;
         } while ($hasNext);
 
-        $this->logger->info('Pulled contacts from Apollo', ['count' => $processed, 'last_ts' => $latestTs]);
+        $this->logger->info('Pulled contacts from Apollo', [
+            'count' => $processed,
+            'limit' => self::MAX_CONTACTS_PER_RUN,
+            'last_ts' => $latestTs ? $latestTs->format('c') : null,
+        ]);
 
-        // Save new cursor (latest updated_at) into integration settings
-        if ($latestTs && $integration && method_exists($integration, 'getIntegrationSettings')) {
-            $integrationSettings = $integration->getIntegrationSettings();
-            if ($integrationSettings && method_exists($integrationSettings, 'setFeatureSettings')) {
-                $integrationSettings->setFeatureSettings(array_merge($settings, ['last_sync_ts' => $latestTs]));
-            }
-        }
 
         return $processed;
     }
@@ -231,4 +227,12 @@ class SyncService
     {
         return $this->em->getClassMetadata(Company::class)->hasField($field);
     }
+    private function getOrCreateSyncState(): SyncState
+    {
+        $repo  = $this->em->getRepository(SyncState::class);
+        $state = $repo->findOneBy([]) ?? new SyncState();
+
+        return $state;
+    }
+
 }

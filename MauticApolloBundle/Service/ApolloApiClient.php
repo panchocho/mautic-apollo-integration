@@ -3,6 +3,7 @@
 namespace MauticPlugin\MauticApolloBundle\Service;
 
 use Mautic\PluginBundle\Helper\IntegrationHelper;
+use MauticPlugin\MauticApolloBundle\Exception\ApolloQuotaExceededException;
 use Psr\Log\LoggerInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
@@ -82,17 +83,71 @@ class ApolloApiClient
     private function handleResponse(ResponseInterface $response): array
     {
         $status = $response->getStatusCode();
-        $body   = $response->toArray(false);
+        $rawBody = $response->getContent(false);
+        $body = json_decode($rawBody, true);
+        if (!is_array($body)) {
+            $body = $rawBody;
+        }
 
         if ($status >= 400) {
+            if ($this->isQuotaExceeded($status, $body)) {
+                $this->logger->warning('Apollo API quota exhausted', [
+                    'status' => $status,
+                    'body' => $body,
+                ]);
+                throw new ApolloQuotaExceededException('Apollo API quota exhausted');
+            }
+
             // Bubble up rate limit to allow queue retry/backoff
             if ($status === 429) {
                 throw new \RuntimeException('Apollo API error 429 rate limit');
             }
+
             $this->logger->error('Apollo API error', ['status' => $status, 'body' => $body]);
             throw new \RuntimeException('Apollo API error '.$status);
         }
 
         return is_array($body) ? $body : [];
+    }
+
+    private function isQuotaExceeded(int $status, $body): bool
+    {
+        $haystack = '';
+        if (is_array($body)) {
+            $haystack = strtolower(json_encode($body) ?: '');
+        } elseif (is_string($body)) {
+            $haystack = strtolower($body);
+        }
+
+        $quotaTerms = [
+            'out of credits',
+            'insufficient credits',
+            'credits exhausted',
+            'quota exhausted',
+            'credit limit',
+            'daily limit reached',
+            'usage limit reached',
+            'payment required',
+        ];
+
+        foreach ($quotaTerms as $needle) {
+            if ($haystack !== '' && strpos($haystack, $needle) !== false) {
+                return true;
+            }
+        }
+
+        if ($status === 402) {
+            return true;
+        }
+
+        if ($status === 403) {
+            foreach (['quota', 'credit', 'limit', 'payment required'] as $needle) {
+                if ($haystack !== '' && strpos($haystack, $needle) !== false) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }

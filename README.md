@@ -37,12 +37,17 @@ php bin/console mautic:apollo:retry
 ```
 
 ## Cron recomendado
-Ejecutar cada 5-15 minutos:
+Ejecutar 1 vez por dia (limite API):
 ```
-php /var/www/mautic-new/bin/console mautic:apollo:pull
-php /var/www/mautic-new/bin/console mautic:apollo:retry
+php /var/www/mautic-new/bin/console mautic:apollo:pull   # 02:00
+php /var/www/mautic-new/bin/console mautic:apollo:retry  # 02:10
 ```
 
 ## Notas
 - Si `mautic:apollo:pull` responde "Apollo integration not configured", revisar API Key.
 - Si la sincronizacion no crea empresas, verificar que exista el campo `apollo_company_id`.
+
+## Limites y cursor
+- El pull esta limitado a 100 contactos por corrida.
+- Se guarda un cursor en la tabla `apollo_sync_state` para no re-sincronizar todo.
+- En logs se registra `count`, `limit` y `last_ts`.

@@ -3,7 +3,9 @@
 namespace MauticPlugin\MauticApolloBundle\Service;
 
 use MauticPlugin\MauticApolloBundle\Entity\QueueItem;
+use MauticPlugin\MauticApolloBundle\Exception\ApolloQuotaExceededException;
 use MauticPlugin\MauticApolloBundle\Service\ApolloApiClient;
+use MauticPlugin\MauticApolloBundle\Service\SyncContext;
 use Doctrine\ORM\EntityManagerInterface;
 use Mautic\LeadBundle\Model\CompanyModel;
 use Mautic\LeadBundle\Entity\Lead;
@@ -15,12 +17,14 @@ class QueueService
 {
     private const CONTACT_ID_FIELD = 'apollo_contact_id';
     private const COMPANY_ID_FIELD = 'apollo_company_id';
+    private const FAILED_RETENTION_DAYS = 7;
 
     private EntityManagerInterface $em;
     private ApolloApiClient $client;
     private LeadModel $leadModel;
     private CompanyModel $companyModel;
     private IntegrationHelper $integrationHelper;
+    private SyncContext $syncContext;
     private LoggerInterface $logger;
 
     public function __construct(
@@ -29,6 +33,7 @@ class QueueService
         LeadModel $leadModel,
         CompanyModel $companyModel,
         IntegrationHelper $integrationHelper,
+        SyncContext $syncContext,
         LoggerInterface $logger
     )
     {
@@ -37,11 +42,16 @@ class QueueService
         $this->leadModel = $leadModel;
         $this->companyModel = $companyModel;
         $this->integrationHelper = $integrationHelper;
+        $this->syncContext = $syncContext;
         $this->logger = $logger;
     }
 
     public function enqueue(string $type, string $payload): void
     {
+        if ($this->syncContext->isApolloImportRunning()) {
+            return;
+        }
+
         $item = new QueueItem();
         $item->setType($type);
         $item->setPayload($payload);
@@ -61,7 +71,7 @@ class QueueService
             ->andWhere('q.nextAttemptAt <= :now')
             ->setParameter('status', QueueItem::STATUS_PENDING)
             ->setParameter('now', $now)
-            ->setMaxResults(50);
+            ->setMaxResults(250);
         $items = $qb->getQuery()->getResult();
 
         $processed = 0;
@@ -69,8 +79,17 @@ class QueueService
             try {
                 $payload = json_decode($item->getPayload(), true) ?? [];
                 $this->dispatchByType($item->getType(), $payload);
-                $item->setStatus(QueueItem::STATUS_DONE);
+                $this->em->remove($item);
                 $processed++;
+            } catch (ApolloQuotaExceededException $e) {
+                $this->logger->warning('Apollo quota exhausted while processing queue; clearing pending batch', [
+                    'id' => $item->getId(),
+                    'type' => $item->getType(),
+                ]);
+                $item->setStatus(QueueItem::STATUS_FAILED);
+                $this->em->persist($item);
+                $this->markRemainingBatchFailed($items, $item);
+                break;
             } catch (\Throwable $e) {
                 $this->logger->error('Queue item failed', [
                     'id' => $item->getId(),
@@ -82,6 +101,8 @@ class QueueService
                     $delayMinutes = min(15, max(1, $item->getAttempts()));
                     $item->setNextAttemptAt($now->modify('+' . $delayMinutes . ' minutes'));
                     $item->setStatus(QueueItem::STATUS_PENDING);
+                } elseif ($this->isQuotaExhausted($e)) {
+                    $item->setStatus(QueueItem::STATUS_FAILED);
                 } elseif ($item->getAttempts() < 5) {
                     $delayMinutes = min(30, pow(2, $item->getAttempts()));
                     $item->setNextAttemptAt($now->modify('+' . $delayMinutes . ' minutes'));
@@ -94,6 +115,38 @@ class QueueService
 
         $this->em->flush();
         return $processed;
+    }
+
+    public function purgeStaleFailedItems(?int $olderThanDays = null): int
+    {
+        $olderThanDays = $olderThanDays ?? self::FAILED_RETENTION_DAYS;
+        $cutoff = new \DateTimeImmutable('-'.$olderThanDays.' days');
+
+        $qb = $this->em->createQueryBuilder();
+        $query = $qb->delete(QueueItem::class, 'q')
+            ->where('q.status = :status')
+            ->andWhere('q.createdAt < :cutoff')
+            ->setParameter('status', QueueItem::STATUS_FAILED)
+            ->setParameter('cutoff', $cutoff)
+            ->getQuery();
+
+        return $query->execute();
+    }
+
+    private function markRemainingBatchFailed(array $items, QueueItem $currentItem): void
+    {
+        $mark = false;
+        foreach ($items as $item) {
+            if ($mark) {
+                $item->setStatus(QueueItem::STATUS_FAILED);
+                $this->em->persist($item);
+                continue;
+            }
+
+            if ($item === $currentItem) {
+                $mark = true;
+            }
+        }
     }
 
     private function dispatchByType(string $type, array $payload): void
@@ -200,6 +253,31 @@ class QueueService
     {
         $message = $e->getMessage();
         return (strpos($message, '429') !== false) || (strpos($message, 'rate') !== false);
+    }
+
+    private function isQuotaExhausted(\Throwable $e): bool
+    {
+        if ($e instanceof ApolloQuotaExceededException) {
+            return true;
+        }
+
+        $message = strtolower($e->getMessage());
+        foreach ([
+            'out of credits',
+            'insufficient credits',
+            'credits exhausted',
+            'quota exhausted',
+            'credit limit',
+            'daily limit reached',
+            'usage limit reached',
+            'payment required',
+        ] as $needle) {
+            if (strpos($message, $needle) !== false) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function getFieldValue(Lead $lead, string $field)
