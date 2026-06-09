@@ -2,7 +2,9 @@
 
 namespace MauticPlugin\MauticApolloBundle\Command;
 
+use MauticPlugin\MauticApolloBundle\Exception\ApolloQuotaExceededException;
 use MauticPlugin\MauticApolloBundle\Service\ApolloApiClient;
+use MauticPlugin\MauticApolloBundle\Service\SyncContext;
 use MauticPlugin\MauticApolloBundle\Service\SyncService;
 use Mautic\LeadBundle\Model\CompanyModel;
 use Mautic\LeadBundle\Model\LeadModel;
@@ -19,6 +21,7 @@ class PullCommand extends Command
     private SyncService $syncService;
     private LeadModel $leadModel;
     private CompanyModel $companyModel;
+    private SyncContext $syncContext;
     private LoggerInterface $logger;
 
     public function __construct(
@@ -26,6 +29,7 @@ class PullCommand extends Command
         SyncService $syncService,
         LeadModel $leadModel,
         CompanyModel $companyModel,
+        SyncContext $syncContext,
         LoggerInterface $logger
     ) {
         parent::__construct();
@@ -33,6 +37,7 @@ class PullCommand extends Command
         $this->syncService  = $syncService;
         $this->leadModel    = $leadModel;
         $this->companyModel = $companyModel;
+        $this->syncContext  = $syncContext;
         $this->logger       = $logger;
     }
 
@@ -49,11 +54,20 @@ class PullCommand extends Command
             return Command::FAILURE;
         }
 
+        $this->syncContext->beginApolloImport();
+
         try {
             $count = $this->syncService->pullFromApollo();
             $output->writeln(sprintf('<info>Imported/updated %d records.</info>', $count));
+            $this->syncContext->endApolloImport();
+            return Command::SUCCESS;
+        } catch (ApolloQuotaExceededException $e) {
+            $this->syncContext->endApolloImport();
+            $this->logger->warning('Apollo pull paused because credits are exhausted', ['exception' => $e]);
+            $output->writeln('<comment>Apollo credits exhausted; pull paused until quota is available again.</comment>');
             return Command::SUCCESS;
         } catch (\Throwable $e) {
+            $this->syncContext->endApolloImport();
             $this->logger->error('Apollo pull failed', ['exception' => $e]);
             $output->writeln('<error>Pull failed: '.$e->getMessage().'</error>');
             return Command::FAILURE;
