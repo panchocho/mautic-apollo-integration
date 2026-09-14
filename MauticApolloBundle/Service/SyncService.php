@@ -18,6 +18,9 @@ class SyncService
     private const CONTACT_ID_FIELD = 'apollo_contact_id';
     private const COMPANY_ID_FIELD = 'apollo_company_id';
     private const MAX_CONTACTS_PER_RUN = 1000;
+    private const COUNTRY_BY_EMAIL_SUFFIX = [
+        '.pe' => 'Peru',
+    ];
 
     private IntegrationHelper $integrationHelper;
     private ApolloApiClient $client;
@@ -127,7 +130,7 @@ class SyncService
         // Prefer matching by stored Apollo contact id, fallback to email
         $lead = null;
         if (!empty($contact['id']) && $this->leadHasField(self::CONTACT_ID_FIELD)) {
-            $lead = $repo->findOneBy([self::CONTACT_ID_FIELD => $contact['id']]);
+            $lead = $this->findLeadByApolloId((string) $contact['id']);
         }
         if (!$lead) {
             $lead = $repo->findOneBy(['email' => $email]);
@@ -144,23 +147,25 @@ class SyncService
             $lead->setLastname($contact['last_name']);
         }
         if (!empty($contact['title'])) {
-            if (method_exists($lead, 'setJobTitle')) {
-                $lead->setJobTitle($contact['title']);
-            } elseif (method_exists($lead, 'setTitle')) {
-                $lead->setTitle($contact['title']);
-            } elseif (method_exists($lead, 'addUpdatedField')) {
-                $lead->addUpdatedField('position', $contact['title']);
-            }
+            $lead->setPosition($contact['title']);
         }
         $phone = $this->truncateString($contact['phone'] ?? null, SchemaDefinition::MAX_VARCHAR_LENGTH);
         if ($phone) {
             $lead->setPhone($phone);
         }
 
+        $country = $this->resolveCountry($contact, $email);
+        if ($country && !$lead->getCountry()) {
+            $lead->setCountry($country);
+        }
+
         // Persist Apollo contact id for future upserts
         if (!empty($contact['id']) && $this->leadHasField(self::CONTACT_ID_FIELD)) {
             $this->setFieldValue($lead, self::CONTACT_ID_FIELD, $contact['id']);
         }
+
+        // A persisted Lead is required before creating the company relationship.
+        $this->leadModel->saveEntity($lead);
 
         // Company mapping
         if (!empty($contact['organization_name']) || !empty($contact['domain'])) {
@@ -170,7 +175,7 @@ class SyncService
             // first try by stored Apollo company id
             $company = null;
             if (!empty($contact['organization_id']) && $this->companyHasField(self::COMPANY_ID_FIELD)) {
-                $company = $companyRepo->findOneBy([self::COMPANY_ID_FIELD => $contact['organization_id']]);
+                $company = $this->findCompanyByApolloId((string) $contact['organization_id']);
             }
             if (!$company) {
                 $company = $companyRepo->findOneBy(['name' => $companyName]);
@@ -187,12 +192,33 @@ class SyncService
                 $this->setCompanyFieldValue($company, self::COMPANY_ID_FIELD, $contact['organization_id']);
                 $this->companyModel->saveEntity($company);
             }
-            if (method_exists($lead, 'addCompany')) {
-                $lead->addCompany($company);
+            $this->companyModel->addLeadToCompany($company, $lead);
+        }
+    }
+
+    private function resolveCountry(array $contact, string $email): ?string
+    {
+        $apolloCountry = isset($contact['country']) && is_scalar($contact['country'])
+            ? (string) $contact['country']
+            : null;
+        $country = $this->truncateString($apolloCountry, SchemaDefinition::MAX_VARCHAR_LENGTH);
+        if ($country) {
+            return $country;
+        }
+
+        $atPosition = strrpos($email, '@');
+        if (false === $atPosition) {
+            return null;
+        }
+
+        $domain = strtolower(substr($email, $atPosition + 1));
+        foreach (self::COUNTRY_BY_EMAIL_SUFFIX as $suffix => $inferredCountry) {
+            if (str_ends_with($domain, $suffix)) {
+                return $inferredCountry;
             }
         }
 
-        $this->leadModel->saveEntity($lead);
+        return null;
     }
 
     private function fieldAlias(string $field): string
@@ -218,15 +244,62 @@ class SyncService
         }
     }
 
+    private function findLeadByApolloId(string $apolloId): ?Lead
+    {
+        $leadId = $this->findEntityIdByCustomField('leads', self::CONTACT_ID_FIELD, $apolloId);
+        $lead   = $leadId ? $this->leadModel->getEntity($leadId) : null;
+
+        return $lead instanceof Lead ? $lead : null;
+    }
+
+    private function findCompanyByApolloId(string $apolloId): ?Company
+    {
+        $companyId = $this->findEntityIdByCustomField('companies', self::COMPANY_ID_FIELD, $apolloId);
+        $company   = $companyId ? $this->companyModel->getEntity($companyId) : null;
+
+        return $company instanceof Company ? $company : null;
+    }
+
+    private function findEntityIdByCustomField(string $table, string $field, string $value): ?int
+    {
+        $id = $this->em->getConnection()->createQueryBuilder()
+            ->select('entity.id')
+            ->from(MAUTIC_TABLE_PREFIX.$table, 'entity')
+            ->where('entity.'.$field.' = :fieldValue')
+            ->setParameter('fieldValue', $value)
+            ->setMaxResults(1)
+            ->executeQuery()
+            ->fetchOne();
+
+        return false !== $id ? (int) $id : null;
+    }
+
     private function leadHasField(string $field): bool
     {
-        return $this->em->getClassMetadata(Lead::class)->hasField($field);
+        return $this->customFieldExists('lead', $field);
     }
 
     private function companyHasField(string $field): bool
     {
-        return $this->em->getClassMetadata(Company::class)->hasField($field);
+        return $this->customFieldExists('company', $field);
     }
+
+    private function customFieldExists(string $object, string $field): bool
+    {
+        $exists = $this->em->getConnection()->createQueryBuilder()
+            ->select('1')
+            ->from(MAUTIC_TABLE_PREFIX.'lead_fields', 'field')
+            ->where('field.object = :object')
+            ->andWhere('field.alias = :alias')
+            ->setParameter('object', $object)
+            ->setParameter('alias', $field)
+            ->setMaxResults(1)
+            ->executeQuery()
+            ->fetchOne();
+
+        return false !== $exists;
+    }
+
     private function getOrCreateSyncState(): SyncState
     {
         $repo  = $this->em->getRepository(SyncState::class);

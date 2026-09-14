@@ -18,6 +18,8 @@ class QueueService
     private const CONTACT_ID_FIELD = 'apollo_contact_id';
     private const COMPANY_ID_FIELD = 'apollo_company_id';
     private const FAILED_RETENTION_DAYS = 7;
+    private const PROCESS_BATCH_SIZE = 25;
+    private const RATE_LIMIT_DELAY_MINUTES = 5;
 
     private EntityManagerInterface $em;
     private ApolloApiClient $client;
@@ -52,6 +54,29 @@ class QueueService
             return;
         }
 
+        // Avoid enqueuing the same lead repeatedly during imports or edits.
+        if (in_array($type, ['lead_update', 'form_submission', 'optout'], true)) {
+            $decoded = json_decode($payload, true);
+            $leadId = is_array($decoded) ? (int) ($decoded['leadId'] ?? 0) : 0;
+            if ($leadId > 0) {
+                $existing = $this->em->getRepository(QueueItem::class)
+                    ->createQueryBuilder('q')
+                    ->select('q.id')
+                    ->where('q.status = :status')
+                    ->andWhere('q.type = :type')
+                    ->andWhere('q.payload LIKE :leadId')
+                    ->setParameter('status', QueueItem::STATUS_PENDING)
+                    ->setParameter('type', $type)
+                    ->setParameter('leadId', '%"leadId":'.$leadId.'%')
+                    ->setMaxResults(1)
+                    ->getQuery()
+                    ->getOneOrNullResult();
+                if ($existing !== null) {
+                    return;
+                }
+            }
+        }
+
         $item = new QueueItem();
         $item->setType($type);
         $item->setPayload($payload);
@@ -71,7 +96,8 @@ class QueueService
             ->andWhere('q.nextAttemptAt <= :now')
             ->setParameter('status', QueueItem::STATUS_PENDING)
             ->setParameter('now', $now)
-            ->setMaxResults(250);
+            ->orderBy('q.createdAt', 'ASC')
+            ->setMaxResults(self::PROCESS_BATCH_SIZE);
         $items = $qb->getQuery()->getResult();
 
         $processed = 0;
@@ -97,10 +123,13 @@ class QueueService
                     'exception' => $e,
                 ]);
                 $item->incrementAttempts();
+                $this->em->persist($item);
                 if ($this->isRateLimit($e)) {
-                    $delayMinutes = min(15, max(1, $item->getAttempts()));
-                    $item->setNextAttemptAt($now->modify('+' . $delayMinutes . ' minutes'));
+                    $retryAt = $now->modify('+'.self::RATE_LIMIT_DELAY_MINUTES.' minutes');
+                    $item->setNextAttemptAt($retryAt);
                     $item->setStatus(QueueItem::STATUS_PENDING);
+                    $this->reschedulePendingQueue($retryAt);
+                    break;
                 } elseif ($this->isQuotaExhausted($e)) {
                     $item->setStatus(QueueItem::STATUS_FAILED);
                 } elseif ($item->getAttempts() < 5) {
@@ -149,6 +178,19 @@ class QueueService
         }
     }
 
+    private function reschedulePendingQueue(\DateTimeImmutable $retryAt): void
+    {
+        $this->em->createQueryBuilder()
+            ->update(QueueItem::class, 'q')
+            ->set('q.nextAttemptAt', ':retryAt')
+            ->where('q.status = :status')
+            ->andWhere('q.nextAttemptAt < :retryAt')
+            ->setParameter('status', QueueItem::STATUS_PENDING)
+            ->setParameter('retryAt', $retryAt)
+            ->getQuery()
+            ->execute();
+    }
+
     private function dispatchByType(string $type, array $payload): void
     {
         switch ($type) {
@@ -186,7 +228,7 @@ class QueueService
             'first_name' => $fields['firstname'] ?? $fields['first_name'] ?? null,
             'last_name'  => $fields['lastname'] ?? $fields['last_name'] ?? null,
             'name'       => trim(($fields['firstname'] ?? '').' '.($fields['lastname'] ?? '')),
-            'title'      => $fields['position'] ?? $fields['title'] ?? null,
+            'title'      => $fields['position'] ?? null,
             'email'      => $fields['email'] ?? null,
             'phone'      => $fields['phone'] ?? null,
         ];
@@ -197,25 +239,27 @@ class QueueService
             $payload['id'] = $apolloId;
         }
 
-        // Attach company if present
-        $companies = method_exists($lead, 'getCompanies') ? $lead->getCompanies() : [];
+        // Attach the primary company if present. LeadModel returns hydrated arrays in Mautic 7.
+        $companies = $this->leadModel->getCompanies($lead);
+        $company   = null;
         if (!empty($companies)) {
-            $company = is_array($companies) ? reset($companies) : $companies->first();
-            if ($company) {
-                if (method_exists($company, 'getName')) {
-                    $payload['company_name'] = $company->getName();
-                } elseif (method_exists($company, 'getCompanyname')) {
-                    $payload['company_name'] = $company->getCompanyname();
-                }
-                if (method_exists($company, 'getWebsite')) {
-                    $payload['domain'] = $company->getWebsite();
-                }
+            $primaryCompanies = array_filter(
+                $companies,
+                static fn (array $candidate): bool => !empty($candidate['is_primary'])
+            );
+            $company = reset($primaryCompanies) ?: reset($companies);
+            if (is_array($company)) {
+                $payload['company_name'] = $company['companyname'] ?? null;
+                $payload['domain']       = $company['companywebsite'] ?? null;
             }
         }
 
         $payload = array_filter($payload, static fn($v) => $v !== null && $v !== '');
         if (empty($payload['email'])) {
-            throw new \RuntimeException('Cannot push lead without email');
+            $this->logger->warning('Skipping Apollo push for lead without email', [
+                'lead_id' => $lead->getId(),
+            ]);
+            return;
         }
 
         $response = $this->client->upsertContact($payload);
@@ -226,11 +270,12 @@ class QueueService
             if (!empty($contactData['id'])) {
                 $this->setFieldValue($lead, self::CONTACT_ID_FIELD, $contactData['id']);
             }
-            if (!empty($contactData['organization_id']) && !empty($companies)) {
-                $company = is_array($companies) ? reset($companies) : $companies->first();
-                if ($company) {
-                    $this->setCompanyFieldValue($company, self::COMPANY_ID_FIELD, $contactData['organization_id']);
-                    $this->companyModel->saveEntity($company);
+            if (!empty($contactData['organization_id']) && is_array($company)) {
+                $companyId     = $company['company_id'] ?? $company['id'] ?? null;
+                $companyEntity = $companyId ? $this->companyModel->getEntity((int) $companyId) : null;
+                if ($companyEntity) {
+                    $this->setCompanyFieldValue($companyEntity, self::COMPANY_ID_FIELD, $contactData['organization_id']);
+                    $this->companyModel->saveEntity($companyEntity);
                 }
             }
             $this->leadModel->saveEntity($lead);
